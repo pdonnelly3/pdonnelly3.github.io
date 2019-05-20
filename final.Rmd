@@ -1,0 +1,535 @@
+---
+title: "Final Project - Chicago Food Inspection Analysis"
+author: "Patrick Donnelly UID: 115753952, Ilana Makover UID: 113546211"
+date: "May 22, 2019"
+output: html_document
+---
+<br>
+<br>
+**Introduction**<br/>
+Hello! And welcome to our first tutorial!
+In this tutorial, we will analyze data from Chicago Food Inspections from the years 2010-2018. We will visualize and try to create predictions for grocery stores, restaurants, and bakeries passing their inspection for 2019. We will use methods and tools that were taught in class in addition to other tools we have researched. 
+
+The dataset can be found here - https://www.kaggle.com/chicago/chicago-food-inspections#food-inspections.csv
+
+We will utilize both linear and logistic regression models to check if there is a relationship between facility types passing and year.
+<br> 
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+library(dplyr)
+library(broom)
+library(ggplot2)
+library(leaflet)
+library(leaflet.extras)
+library(readr)
+library(knitr)
+library(kableExtra)
+library(effects)
+library(sjPlot)
+library(jtools)
+library(sjmisc)
+```
+
+Here we load the data locally to be able to manipulate it and use it later. <br>
+
+```{r readData, include=FALSE}
+chicago <- read_csv("C:/Users/donne/OneDrive/Documents/CMSC320/Final/food-inspections.csv")
+```
+
+Let's take a look at a small portion of our data. 
+
+```{r peakdata}
+chicago[1:5, 1:22] %>%
+  mutate(Violations = substr(Violations, 1, 50))%>%
+  kable() %>%
+  kable_styling(bootstrap_options = c("striped", "hover", "condensed"))
+```
+
+<br>
+Okay. great. We have the names of the establishment and other relavent information about the inspection including but not limited to address, risk level, result of inspections and  violations. 
+<br>
+
+#Data Cleaning
+
+We are only interested in establishments that either pass, pass with conditions or fail, therefore we are going to remove any business that does not fit in these categories. 
+
+Data from 2019 is removed as 2019 only has 5 months worth of data compared to the data collected between 2010 and 2018 where each of these years has twelve months worth of data. 
+
+New columns are created to help with later computations. For example, a year column is added where we extract the year from the Inspection Date column.
+
+A risk value column is added to discretize risk. The Risk column  has 3 categories: "Risk 1 (High)", "Risk 2 (Medium)", and "Risk 3(Low)". We create a new column which converts the 3 categories into 3 numeric values. 3 represents Risk 1 (High), 2 represents Risk 2 (Medium) and 1 represents Risk 3 (Low). 
+
+We create a new column called Pass which converts the 3 categories of the result of inspection, into 2 numeric values. If the establishment fails inspections, the score is 0, if the establishments passes or passes with a condition, the score is 1.
+<br>
+
+```{r clean}
+chicago <- chicago %>%
+  #filter out things we do not need or want
+  filter(Results != "Not Ready" & Results != "Business Not Located" & Results != "No Entry" & Results 
+         != "Out of Business" & Results != "NA" & Risk != "All" & `Facility Type` != "NA")%>%
+  
+  #make a column for if they pass/failed
+  mutate(Pass = ifelse(Results == "Pass" | Results =="Pass w/ Conditions", 1, 0))%>%
+
+  #grab the year of the inspection date using regular expressions
+  mutate(year = as.numeric(gsub("(^[0-9]{4})(-[0-9]{2}-)([0-9]{2})", "\\1", `Inspection Date`))) %>%
+  
+  filter(year != 2019)%>%
+  #adding risk value
+  mutate(`Risk Value` = ifelse(Risk == "Risk 1 (High)", 3, 
+                               ifelse(Risk == "Risk 2 (Medium)", 2, 1)))
+
+
+#lets rename the column Facility Type to Facility
+chicago <- rename(chicago, Facility=`Facility Type`)
+```
+
+
+Here is a small snippet of what our new dataset looks like.  
+```{r updated dataset}
+chicago[1:5, 1:25] %>%
+  mutate(Violations = substr(Violations, 1, 50))%>%
+  kable() %>%
+  kable_styling(bootstrap_options = c("striped", "hover"))
+```
+#Exploratory Data Analysis: Data Visualization
+
+In this section, we are visualizing the data. 
+<br>
+Below, we create an interactive map of Chicago. You will be able to scroll through Chicago and see which business pass or fail inspection, which business has a high or low risk level, where these businesses are located and the name of the business.
+
+To get a better understanding of the data, we sample 2000 entries. 
+
+Here is a quick guide on how to interpret the map below:
+
+**Icon**: Indicates Result
+<br>
+Pass- thumbs-up  
+Fail- thumbs-down  
+Pass with Conditions- check-circle  
+<br>
+
+**MarkerColor:** Indicates Risk Value  
+Highest = 3 = red  
+Medium = 2 = white  
+Low = 1 = blue  
+
+The business name pops up when the icon is clicked. <br>
+The cluster colors bear no significance to the data. 
+
+```{r map, include=TRUE}
+#sampling 2000 entries
+dat <- chicago %>%
+  filter(!is.na(`Longitude`)) %>%
+  sample_n(2000)
+
+#If facility passes, icon is a thumbs up, if it fails it is a thumbs down. otherwise, a check-circle
+getResult <- function(dat) {
+  ifelse(dat$Results == "Pass", 'thumbs-up', 
+         ifelse(dat$Results == "Fail", 'thumbs-down', 'check-circle'))
+}
+
+#if facility risk value is high (3) the color is red, if it is low (1) the color is white, else the color is blue
+getRiskValue <- function(dat) {
+  ifelse(dat$`Risk Value` == 3, 'red',
+         ifelse(dat$`Risk Value` == 1, 'white', 'blue'))
+}
+
+#icon functions
+icons <- awesomeIcons(
+  icon = getResult(dat),
+  markerColor = getRiskValue(dat),
+  library = 'fa'
+)
+
+leaflet(dat) %>%
+  addTiles() %>%
+  addAwesomeMarkers(~Longitude,
+                    ~Latitude,
+                    icon = icons,
+                    clusterOptions = markerClusterOptions(),
+                    popup = ~(`DBA Name`)) %>%
+  addFullscreenControl()
+```
+<br>
+The map is helpful to visualize small clusters of businesses in Chicago. However, it's hard to get an idea of the results as we have to scroll in to view the distributions of only a small portion of businesses. Just by looking at the map, it's hard to grasp how many businesses actually pass, pass with conditions and fail. Also, since this map only samples 2000 entries across 8 years, it makes it even more difficult to understand the disrtibution of results per year.
+<br><br>
+Instead, let's look at a graph representation of total results between 2010 - 2018. 
+<br><br>
+
+
+```{r graph basic}
+chicago %>%
+  ggplot(aes(x=Results, fill = Results))+
+  geom_bar() +
+  labs(title="Total Results for 2010 - 2018")
+```
+
+<br>
+That looks better! We can see that overall, there are more pass than there are fails and pass with conditions. However, we see all the results from 2010 - 2018. 
+
+
+To get a better understanding of how businesses are performing over the years, let's break down the results by year. Each plot will represent one year.
+<br>
+
+```{r bargraphResults, fig.height=6, fig.width=10,include=TRUE}
+chicago %>%
+  
+  #create 9 time periods by year
+  mutate(discrete_period = factor(year)) %>%
+  
+  ggplot(aes(x=Results, fill = Results)) +
+  geom_bar() +
+  
+  facet_wrap(~discrete_period) +
+  theme(legend.position = "top")+
+  
+  #make the labels
+  ggtitle("Results vs Year")
+```
+<br>
+We can now get a better idea of the amount of passing businesses per year. As we can see from the plots above, there is a trend of more passing businesses than failing businesses. We can also see that passing with conditions increases across the years.
+
+Now, let's look at how risks, high, low and medium, are broken down by year by using a similar graph as the one above. 
+```{r bargraph Risk, fig.height=6, fig.width=10,include=TRUE}
+chicago %>%
+  
+  #create 9 time periods by year
+  mutate(discrete_period = factor(year)) %>%
+  
+  #group by risk
+  group_by(Risk) %>%
+  
+  ggplot(aes(x=Risk, fill = Risk)) +
+  geom_bar() +
+  
+  facet_wrap(~discrete_period) +
+  theme(legend.position = "top")+
+  ggtitle("Risk vs Year")
+```
+<br>
+Overall, more facilities are high risk as opposed to medium/low risk.
+
+Instead of visualizing the total number of passing facilities per year, we will look at the average amount of passing facilities per year vs the total number of passing per year.
+
+By adding geom_smooth(), it will add a line to the plot and make it easier to understand what is happening.
+<br><br>
+```{r graph total passes plot}
+chicago %>%
+  group_by(year)%>%
+  summarize(passMean = mean(Pass), total = sum(Pass))%>%
+  ggplot(aes(x=total, y = passMean))+
+  geom_point()+
+  theme_minimal()+
+  geom_smooth()+
+  labs(x="Total Passes", y="Mean of Passes", title="Mean of Passes vs Total Passes")
+```
+
+<br>
+From the above graph, it is evident the more facilities are being inspected, the average number of passing inspections increases.
+
+**Let's dig deeper!**
+
+Let's see if there is a relationship between facility type and passing rates. We will first examine the distribution of passing bakeries in Chicago.
+<br>
+```{r graph bakeries plot}
+chicago %>%
+  filter(Facility == "Bakery") %>%
+  group_by(year) %>%
+  summarize(mean_pass = mean(Pass)) %>%
+  ggplot(aes(x=year, y = mean_pass)) +
+  geom_point() +
+  theme_minimal() +
+  geom_smooth() +
+  labs(y="Mean of Passing Bakeries", x="Year", title="Mean of Passing Bakeries vs Year")
+```
+<br>
+From the above plot, bakeries tend to pass about 75% of inspections each year. This leads us to believe that if there is a relationship between bakeries passing and year, it may not be a linear relationship.
+
+**Let's examine another facility type: Grocery Stores**
+
+Since there does not appear to be a linear relationship between passing bakeries and year, we will try plotting the distribution of grocery stores passing inspections, over time and see if there is a linear relationship.
+<br>
+```{r grocery store plot}
+chicago %>%
+  filter(Facility == "Grocery Store")%>%
+  group_by(year)%>%
+  summarize(mean_pass = mean(Pass))%>%
+  ggplot(aes(x=year, y = mean_pass))+
+  geom_point()+
+  theme_minimal()+
+  geom_smooth()+
+  labs(x="Year", y="Mean of Passing Grocery Stores", title="Mean of Passing Grocery Stores vs Year")
+```
+<br>
+There seems to be a releationship between grocery stores passing over time but it does not seem to be linear.
+
+**Let's examine another facility type: Restaurants**
+
+Since there does not appear to be a linear relationship between passing grocery stores and year, we will try plotting the distribution of restaurants passing inspections, over time and see if there is a linear relationship.
+<br>
+```{r graph grocery store plot}
+chicago %>%
+  filter(Facility == "Restaurant")%>%
+  group_by(year)%>%
+  summarize(mean_pass = mean(Pass))%>%
+  ggplot(aes(x=year, y = mean_pass))+
+  geom_point()+
+  theme_minimal()+
+  geom_smooth()+
+  labs(x="Year", y="Mean of Passing Restaurants", title="Mean of Passing Restaurants vs Year")
+```
+<br>
+There seems to be a releationship between restaurants passing over time but it does not seem to be linear.
+
+We will test this by creating a linear regression model to ensure that this relationship is non-linear. If this relationship turns out to be non-linear, we will try exploring a logistic regression model to see if we get better results!
+<br>
+
+#Experiment Design and Hypothesis
+
+Based on the above facility type plots, we believe that there is no linear correlation between facility type passing and year. One popular way of determining if there is a correlation is to reject the hypothesis also known as the Null hypothesis.
+
+Our null hypothesis is that there is a linear correlation between facility type passing and year.
+
+To test our hypothesis, we build a linear model between facility type passing and year. We are only looking at facility types that are either restaurants, bakeries, or grocery stores. Linear regression models are used in data analysis. It allows to us to construct confidence intervals and hypothesis testing between variables.
+
+In order to test only restaurants, bakeries, and grocery stores, we will create a new dataset from the Chicago dataset grouped by year. From this new dataset, we create a linear regression model between mean_pass and year.
+<br>
+```{r sum of count}
+stores_mean <- chicago %>%
+  filter(Facility == "Grocery Store" | Facility == "Bakery" | Facility == "Restaurant") %>%
+  group_by(year, Facility) %>%
+  summarize(mean_pass = mean(Pass)) %>%
+  select(year, mean_pass)
+
+mean_lm <- lm(mean_pass ~ year, data=stores_mean)
+
+summary(mean_lm)
+```
+
+<br>
+**Confidence Interval**
+
+Let's construct a confidence interval so we can say how precise we think our estimates of the facility type regression line is. 
+
+Using the tidy function provided by the broom package, we will calculate a standard error estimate for \beta{1} and we will construct a 95% confidence interval.
+<br>
+```{r confidence stats}
+#gather the stats from the linear_model using tidy() which is defined by the broom package.
+stats <- mean_lm %>%
+  tidy() %>%
+  select(term, estimate, std.error)
+stats
+```
+
+Now let's construct the confidence interval using the stats we gathered above.
+```{r confidence interval }
+confidence_interval_offset <- 1.95 * stats$std.error[2]
+confidence_interval <- round(c(stats$estimate[2] - confidence_interval_offset,
+                               stats$estimate[2],
+                               stats$estimate[2] + confidence_interval_offset), 4)
+
+confidence_interval
+```
+
+Based on the given confidence interval, we could say that "on average, facilities pass -0.0023 to 0.0031 to .0086 more for each year"
+
+**Global Statistics**
+
+Now using the glance function provided by the broom package, we will get some global statistics from our regression model.
+
+```{r global stats}
+mean_lm %>%
+  glance() %>%
+  select(r.squared, sigma, statistic, df, p.value)
+```
+
+<br>
+R-squared is used to evaluate how well the model fits the data. It identifies how much of the variance in the predicated variable, or dependent variable, can be explained by independent variable. For example, our R-squared value of  0.04805467 can explain 4.8% of the variation in the outcome. Therefore, this indicates there is close to no correlation between a facility passing and year. We concur with our null hypothesis and reject our original hypothesis.
+
+**Skew**
+
+Let's try to see if the data is skewed, meaning let's check if the first and third quartiles are either less than or greater than the median.
+<br>
+```{r linearmodel2, include=TRUE}
+# The best way to extract these values is to make a data frame from the linear model
+quantiles <- quantile(mean_lm$residuals)
+
+quantiles
+```
+
+To determine if there is a skew in the data, we need to check that the First Quartile, or the 25% column, and the Third Quartile, the 75% column, are equal distance from the median. To determine that, you can simply subtract the median from the third quartile and check if that value is equal to the first quartile subtracted from the median.
+<br><br>
+In short we have to check:
+<br><br>
+75% column - median = median - 25% column 
+<br><br>
+0.02318608 - 0.01003876 =? 0.01003876 - (-0.01855324)
+<br><br>
+0.01314732 =? 0.028592
+<br><br>
+Since the right side is not equal to the left side, the data is slightly skewed.
+<br>
+
+**Augment**
+
+Next we will use the augment function which will help us to tell us about the fitted model. 
+
+```{r augment sum}
+mean_augment <- mean_lm %>%
+  augment()
+
+mean_augment %>% 
+  head()
+```
+<br>
+**Test for Linearity**
+
+So now that we have made our model and processed some of the data, we will plot the model. Plotting the model will help us to see if there is a linear relationship between the average number of passes and year. If there is a linear relationship, we should expect to see the residuals clustered around 0.
+<br>
+```{r test linearity sum}
+mean_augment %>%
+  ggplot(aes(x=.fitted,y=.resid)) +
+    geom_point() + 
+    geom_smooth() +
+    labs(x="fitted", y="residual", title="Residuals vs Fitted")
+```
+<br>
+As we can see above, the residuals do not cluster around 0. Therefore, we can say that there is no linear relationship between faciility types passing and year. Now we will try using a logistic regression model to see if we get better results.
+
+#Logistic Regression
+
+Before we make our logistic regression model, we are going to make a dataset called facilities that only contains information on bakeries, grocery stores and restaurants. This will help us with our model by removing unwanted information.
+<br>
+```{r gather data}
+facilities <- chicago %>%
+  select(year, Facility, Results, Pass, `DBA Name`, `Inspection Date`, `Zip Codes`)%>%
+  filter(Facility == "Bakery" | Facility == "Grocery Store" | Facility == "Restaurant") 
+
+head(facilities)
+```
+<br>
+Great! Now that we grabbed those attributes, we want to know if there is a correlation between facility types passing and year with passing results. We will also add Facility as a factor in computing the model. This time we will be making a logistic regression model instead of the linear regression model so we will be using the glm function insteaf of lm.
+<br>
+```{r logistic model, include=TRUE}
+#We are trying to see if there is a relationship for results and year.
+logistic_model = glm(formula = Pass ~ year+Facility, data = facilities, family="binomial")
+
+summary(logistic_model)
+```
+<br>
+Because the null deviance is very large, this indicates that the null model does not explain the model very well. 
+
+**Interaction Model**
+
+Now we are going to make an interaction model between year and the Facility types. This time notice we use * instead of +. 
+<br>
+```{r interaction logistic model, include=TRUE}
+#We are trying to see if there is a relationship for results and year.
+interaction_logistic_model = glm(formula = Pass ~ Facility*year, data = facilities, family="binomial")
+
+summary(interaction_logistic_model)
+```
+<br>
+Comparing the residual deviance from the interaction model to the residual deviance of our first logistic model, the number is smaller in the interacion model signifying that the interaction model is a better prediction for the model.
+
+Using the anova function, we can compare the two models more clearly.
+<br>
+```{r anova}
+anova(logistic_model, interaction_logistic_model)
+```
+<br>
+This further proves our point that the interaction model is an improved model.
+
+To better visualize our model, we will plot the distribution of it.
+<br>
+```{r predict plot}
+plot_summs(interaction_logistic_model, scale = TRUE, plot.distributions = TRUE, inner_ci_level = .9)
+```
+
+And we will also plot a comparison of distributions between the two models.
+```{r}
+plot_summs(interaction_logistic_model, logistic_model, scale = TRUE, plot.distributions = TRUE)
+```
+
+
+Let's see what stats are produced by this interaction model.
+<br>
+```{r interative model stats}
+interaction_logistic_model_stats <- interaction_logistic_model %>% 
+  tidy()
+interaction_logistic_model_stats
+```
+<br>
+Notice that there is one interaction missing, the interaction between Bakery and year. This will be the base the for our estimates. This means that for the estimate column, if the numbers are positive, the estimate is highter than the Bakery estimate and if it is negative, it is lower than the Bakery estimate. 
+
+Now we are going to see what the increase is for the facility type and year interactions. First we will use the year estimate as our base and then make a data frame out of the estimates.
+
+Using these estimates we will add them to the year to find the increase! Since this is a relatively small amount of estimates, we could just make variables for each estimate and show the increase but if we were to have a lot of estimates, it would be tough to make variables for all of them.
+<br>
+```{r grab coefficients}
+year <- interaction_logistic_model_stats$estimate[4]
+
+estimate<- interaction_logistic_model_stats%>%
+  mutate(Facility = term, estimate = estimate)%>%
+  select(Facility, estimate)%>%
+  slice(5:6)
+  
+estimate_df <- data.frame(estimate)
+
+
+estimate_df <- estimate_df %>%
+  mutate(increase = year + estimate)
+
+estimate_df
+```
+<br>
+When bakeries is the intercept, grocery stores on average pass 4.852979% more per year than bakeries while Restaurants pass on average 1.244209% more than bakeries. 
+
+Now we are going to use the augment function again to help us plot residual and fitted values to see how well the model performs.
+<br>
+```{r augment}
+augmented_logistic <- interaction_logistic_model %>%
+  augment()
+
+augmented_logistic %>%
+  head()
+```
+<br>
+Now lets make two plots using plot_model provided by the packages sjPlot and sjmisc.
+
+The first plot will plot marginal effects of the interaction terms.
+<br>
+```{r plot int}
+#The Interaction
+plot_model(interaction_logistic_model, type="int")
+```
+<br>
+The probablility of a Restaurant passing increases in an 8 year span by roughly 2% and probability of a grocery store passing increased by roughly 18% in the 8 year time frame, and bakeries passing stayed about the same. 
+
+These plots will show the predicted values (marginal effects) for the specific model terms
+<br>
+```{r plot pred}
+#The Interaction
+plot_model(interaction_logistic_model, type="pred", terms=c("year", "Facility"))
+```
+<br>
+We can see that there is a upward trend of grocery stores and restaurants passing and it seems that bakeries stay about the same but have a high passing rate.
+
+#Let's Make a Prediction!
+
+Now lets make a prediction of our three facilities passing for 2019! We will make a dummy data frame called test_data and call the predict() function!
+<br>
+```{r predictions}
+test_data <- data.frame(Facility=c("Bakery", "Restaurant", "Grocery Store"), year=2019, Pass=1)
+predict(interaction_logistic_model, test_data, type="response")
+```
+<br>
+**Results**
+
+This prediction tells us that a bakery has a 75% chance of passing inspection while a restaurant will have a 79% chance of passing inspection and while a grocery store will have a 77% chance of passing inspection in 2019.
+
+
+#Summary
+We began our tutorial by trying to see if there is a linear relationship between facilities passing and year. Unfortunately, through our linear regression model, we found there is no linear relationship. We then tried testing out hypothesis with a logistic regression model which was better then linear, but still not as good as we'd hoped. We then tried an interaction model and this proved to be a much better prediction model. From our data analysis, we conclude that restaurants will pass at a higher rate than either bakeries or grocery stores in 2019.
