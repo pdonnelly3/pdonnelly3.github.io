@@ -43,7 +43,7 @@ Let's take a look at a small portion of our data.
 chicago[1:5, 1:22] %>%
   mutate(Violations = substr(Violations, 1, 50))%>%
   kable() %>%
-  kable_styling(bootstrap_options = c("striped", "hover", "condensed"))
+  kable_styling(bootstrap_options = c("striped", "hover", "condensed", "responsive"))
 ```
 
 <br>
