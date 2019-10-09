@@ -1,7 +1,7 @@
 theme: jekyll-theme-architect
 url: "https://pdonnelly3.github.io"
 plugins:
-  - jekyll-sitemap
+  - jekyll-sitemap,
   - jekyll-press
  defaults:
   -
