@@ -93,7 +93,7 @@ h5 {
   font-size: 16px;
 }
 h6 {
-  font-size: 12px;
+  font-size: 16px;
 }
 .table th:not([align]) {
   text-align: left;
@@ -223,19 +223,11 @@ $(document).ready(function () {
 
 <div class="container-fluid main-container">
 
-
-
-
 <div class="fluid-row" id="header">
-
-
-
 <h1 class="title toc-ignore">Chicago Food Inspection Analysis</h1>
 <h4 class="author">Patrick Donnelly, Ilana Makover</h4>
 <h4 class="date">May 22, 2019</h4>
-
 </div>
-
 
 <p><br> <br> <strong>Introduction</strong><br /> Hello! And welcome to our first tutorial! In this tutorial, we will analyze data from Chicago Food Inspections from the years 2010-2018. We will visualize and try to create predictions for grocery stores, restaurants, and bakeries passing their inspection for 2019. We will use methods and tools that were taught in class in addition to other tools we have researched.</p>
 <p>The dataset can be found here - <a href="https://www.kaggle.com/chicago/chicago-food-inspections#food-inspections.csv" class="uri">https://www.kaggle.com/chicago/chicago-food-inspections#food-inspections.csv</a></p>
@@ -246,8 +238,8 @@ $(document).ready(function () {
 <pre class="r"><code>chicago[1:5, 1:22] %&gt;%
   mutate(Violations = substr(Violations, 1, 50))%&gt;%
   kable() %&gt;%
-  kable_styling(bootstrap_options = c(&quot;striped&quot;, &quot;hover&quot;, &quot;condensed&quot;))</code></pre>
-<table class="table table-striped table-hover table-condensed" style="margin-left: auto; margin-right: auto;">
+  kable_styling(bootstrap_options = c(&quot;striped&quot;, &quot;hover&quot;, &quot;condensed&quot;, &quot;responsive&quot;))</code></pre>
+<table class="table table-striped table-hover table-condensed table-responsive" style="margin-left: auto; margin-right: auto;">
 <thead>
 <tr>
 <th style="text-align:right;">
