@@ -1,7 +1,7 @@
 theme: jekyll-theme-architect
 url: "https://pdonnelly3.github.io"
 plugins:
-  - jekyll-sitemap,
+  - jekyll-sitemap
   - jekyll-press
 jekyll-press:
   exclude: 'atom.xml' # Exclude files from processing - file name, glob pattern or array of file names and glob patterns
