@@ -2,3 +2,9 @@ theme: jekyll-theme-architect
 url: "https://pdonnelly3.github.io"
 plugins:
   - jekyll-sitemap
+ defaults:
+  -
+    scope:
+      path:            "googlebf21f349b63d09ef.html"
+    values:
+      sitemap:         false
